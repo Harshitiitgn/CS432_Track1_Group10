@@ -98,7 +98,7 @@ export default function Login({ onLogin }) {
                 className="text-xs px-3 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg text-gray-700 dark:text-slate-300 transition-colors">
                 Admin account
               </button>
-              <button onClick={() => fill('2023473', '9649136331')}
+              <button onClick={() => fill('2022047', '9129434757')}
                 className="text-xs px-3 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg text-gray-700 dark:text-slate-300 transition-colors">
                 Student account
               </button>
