@@ -10,10 +10,10 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-here';
 // Admin-only: create a new user account for a member
 router.post('/register', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { username, password, role, memberId } = req.body;
+    const { username, password, role, identificationNumber } = req.body;
     const db = getDB();
     const hash = await bcrypt.hash(password, 10);
-    await db.run('INSERT INTO Users (Username,PasswordHash,Role,MemberID) VALUES(?,?,?,?)', [username, hash, role || 'Regular', memberId || null]);
+    await db.run('INSERT INTO Users (Username,PasswordHash,Role,IdentificationNumber) VALUES(?,?,?,?)', [username, hash, role || 'Regular', identificationNumber || null]);
     res.status(201).json({ message: 'User created' });
   } catch (error) {
     if (error.message && error.message.includes('UNIQUE')) return res.status(400).json({ error: 'Username already exists' });
@@ -39,7 +39,7 @@ router.post('/login', async (req, res) => {
 
     const JWT_SECRET_LOCAL = process.env.JWT_SECRET || 'your-secret-key-here';
     const token = jwt.sign(
-      { userId: user.UserID, username: user.Username, role: user.Role, memberId: user.MemberID },
+      { userId: user.UserID, username: user.Username, role: user.Role, identificationNumber: user.IdentificationNumber },
       JWT_SECRET_LOCAL,
       { expiresIn: '24h' }
     );
@@ -52,7 +52,7 @@ router.post('/login', async (req, res) => {
       // secure: true,  // uncomment in production (HTTPS only)
     });
 
-    res.json({ role: user.Role, memberId: user.MemberID, username: user.Username });
+    res.json({ role: user.Role, identificationNumber: user.IdentificationNumber, username: user.Username });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Server error' });

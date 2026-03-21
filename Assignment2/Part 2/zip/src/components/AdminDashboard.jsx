@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, DoorOpen, Key, MessageSquare,
   UserCheck, Banknote, Wrench, LogOut, Plus, X,
   Search, AlertCircle, CheckCircle, XCircle,
-  Building2, Edit, RefreshCw, Activity, Calendar, PackageCheck, QrCode, Lock, ShieldCheck, Check, Camera, Moon, Sun
+  Building2, Edit, RefreshCw, Activity, Calendar, PackageCheck, QrCode, Lock, ShieldCheck, Check, Camera, Moon, Sun, Menu
 } from 'lucide-react';
 import QRCameraScanner from './QRCameraScanner.jsx';
 import { useTheme } from '../ThemeContext.jsx';
@@ -19,13 +19,13 @@ const API = (url, method = 'GET', body = null) =>
 function Modal({ show, onClose, title, children }) {
   if (!show) return null;
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-start justify-center z-50 p-4 overflow-y-auto pt-10">
-      <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-lg border border-slate-100 dark:border-slate-700 animate-in fade-in zoom-in duration-200">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800">
+    <div className="fixed inset-0 bg-slate-900/60 rounded-2xl backdrop-blur-sm flex items-start justify-center z-50 p-4 overflow-y-auto pt-10">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg border border-slate-100 dark:border-slate-700 animate-in fade-in zoom-in duration-200">
+        <div className="flex items-center justify-between rounded-t-2xl px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800">
           <h3 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-indigo-700">{title}</h3>
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-colors"><X size={20} /></button>
         </div>
-        <div className="px-6 py-6 bg-white dark:bg-slate-900">{children}</div>
+        <div className="px-6 py-6 bg-white rounded-2xl dark:bg-slate-900">{children}</div>
       </div>
     </div>
   );
@@ -94,9 +94,16 @@ export default function AdminDashboard({ onLogout }) {
   const { dark, toggle: toggleTheme } = useTheme();
   const [section,     setSection]     = useState('overview');
   const [loading,     setLoading]     = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [toast,       setToast]       = useState(null);
   const [members,     setMembers]     = useState([]);
   const [rooms,       setRooms]       = useState([]);
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
   const [allocations, setAllocations] = useState([]);
   const [complaints,  setComplaints]  = useState([]);
   const [visitors,    setVisitors]    = useState([]);
@@ -109,16 +116,23 @@ export default function AdminDashboard({ onLogout }) {
   const [stats,       setStats]       = useState(null);
   const [search,      setSearch]      = useState('');
   const [modal,       setModal]       = useState(null);
+  const [selectedHostel, setSelectedHostel] = useState(null); // For Rooms hierarchical view
+  const [selectedRoom,   setSelectedRoom]   = useState(null);
   const [selected,    setSelected]    = useState(null);
+  const [hostels,     setHostels]     = useState([]);
+  const [roomTypes,    setRoomTypes]    = useState([]);
 
   const [memberForm,  setMemberForm]  = useState({ Name:'', Email:'', ContactNumber:'', Department:'', YearOfStudy:'', PurposeOfStay:'Resident Student', IdentificationNumber:'', Gender:'Male', Age:'', DateOfBirth:'', AllocatedDate:'', createLogin:false, Username:'', Password:'' });
-  const [allocForm,   setAllocForm]   = useState({ MemberID:'', RoomID:'', CheckInDate:new Date().toISOString().slice(0,10), AllocatedBy:'' });
+  const [allocForm,   setAllocForm]   = useState({ IdentificationNumber:'', RoomID:'', CheckInDate:new Date().toISOString().slice(0,10), AllocatedBy:'' });
   const [upForm,      setUpForm]      = useState({ Status:'', AssignedTo:'', ResolutionRemarks:'', qrCode:'' });
-  const [feeForm,     setFeeForm]     = useState({ MemberID:'', FeeCategoryID:'', AmountPaid:'', PaymentDate:new Date().toISOString().slice(0,10), Status:'Paid' });
+  const [feeForm,     setFeeForm]     = useState({ IdentificationNumber:'', FeeCategoryID:'', AmountPaid:'', PaymentDate:new Date().toISOString().slice(0,10), Status:'Paid' });
   const [gateScan,    setGateScan]    = useState({ qrCode:'', result:null });
   const [maintScan,   setMaintScan]   = useState({ qrCode:'', result:null });
   const [gateCam,     setGateCam]     = useState(false);
   const [maintCam,    setMaintCam]    = useState(false);
+
+  const [hostelForm,  setHostelForm]  = useState({ Name:'', ShortCode:'', WardenName:'', WardenContact:'', Address:'' });
+  const [roomForm,    setRoomForm]    = useState({ HostelID:'', RoomTypeID:'', RoomNumber:'', Floor:0 });
   
   const [sortConfig,  setSortConfig]  = useState(null);
   const handleSort = (key) => setSortConfig(p => ({ key, dir: p?.key === key && p.dir === 'asc' ? 'desc' : 'asc' }));
@@ -136,23 +150,24 @@ export default function AdminDashboard({ onLogout }) {
   };
 
   const showToast = (msg, type='success') => { setToast({msg,type}); setTimeout(()=>setToast(null),3000); };
-  const closeModal = () => { setModal(null); setSelected(null); };
+  const closeModal = () => { setModal(null); setSelected(null); setSelectedRoom(null); };
 
   const [cpForm,      setCpForm]      = useState({ oldPassword:'', newPassword:'', confirmPassword:'' });
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [m,r,a,c,v,f,mx,cats,fc,st,furn,scn] = await Promise.all([
+      const [m,r,a,c,v,f,mx,cats,fc,st,furn,scn, h, rt] = await Promise.all([
         API('/api/members'), API('/api/rooms'), API('/api/allocations'), API('/api/complaints'),
         API('/api/visitors'), API('/api/fees'), API('/api/maintenance'),
         API('/api/complaints/categories'), API('/api/fees/categories'), API('/api/stats'),
-        API('/api/furniture'), API('/api/scans')
+        API('/api/furniture'), API('/api/scans'), API('/api/hostels'), API('/api/rooms/types')
       ]);
       setMembers(m); setRooms(r); setAllocations(a); setComplaints(c);
       setVisitors(v); setFees(f); setMaintenance(mx);
       setFurniture(furn||[]); setScans(scn||[]);
       setCategories(cats); setFeeCats(fc); setStats(st);
+      setHostels(h); setRoomTypes(rt);
     } catch(e) { showToast(String(e),'error'); }
     finally { setLoading(false); }
   }, []);
@@ -168,7 +183,7 @@ export default function AdminDashboard({ onLogout }) {
       const password = (memberForm.createLogin && memberForm.Password) ? memberForm.Password : memberForm.ContactNumber;
 
       if (username && password) {
-        await API('/api/auth/register', 'POST', { username, password, role: 'Regular', memberId: res.id });
+        await API('/api/auth/register', 'POST', { username, password, role: 'Regular', identificationNumber: res.id });
       }
 
       showToast('Member added'); closeModal(); fetchAll();
@@ -242,8 +257,38 @@ export default function AdminDashboard({ onLogout }) {
   };
 
   const handleAddFee = async () => {
-    try { await API('/api/fees','POST',feeForm); showToast('Payment recorded'); closeModal(); fetchAll(); }
-    catch(e) { showToast(String(e),'error'); }
+    try { 
+      await API('/api/fees','POST',feeForm); 
+      showToast('Payment recorded'); 
+      closeModal(); 
+      fetchAll(); 
+    } catch(e) { 
+      showToast(String(e),'error'); 
+    }
+  };
+
+  const handleAddHostel = async () => {
+    try { 
+      await API('/api/hostels','POST',hostelForm); 
+      showToast('Hostel added!'); 
+      closeModal(); 
+      setHostelForm({ Name:'', ShortCode:'', WardenName:'', WardenContact:'', Address:'' }); 
+      fetchAll(); 
+    } catch(e) { 
+      showToast(String(e),'error'); 
+    }
+  };
+
+  const handleAddRoom = async () => {
+    try { 
+      await API('/api/rooms','POST',roomForm); 
+      showToast('Room added!'); 
+      closeModal(); 
+      setRoomForm({ HostelID:'', RoomTypeID:'', RoomNumber:'', Floor:0 }); 
+      fetchAll(); 
+    } catch(e) { 
+      showToast(String(e),'error'); 
+    }
   };
 
   const navItems = [
@@ -275,7 +320,7 @@ export default function AdminDashboard({ onLogout }) {
 
   const renderOverview = () => (
     <div className="space-y-8 fade-in animate-in">
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
         <StatCard icon={Users}       label="Total Members"    value={stats?.members?.total}        sub={`${stats?.members?.active??0} active accounts`} colors="from-blue-500 to-indigo-600" />
         <StatCard icon={Key}         label="Active Allocs"    value={stats?.allocations?.active}    sub={`${stats?.allocations?.total??0} total records`} colors="from-emerald-400 to-emerald-600" />
         <StatCard icon={DoorOpen}    label="Available Rooms"  value={stats?.rooms?.available}       sub={`${stats?.rooms?.total??0} physical rooms`}    colors="from-cyan-400 to-blue-500" />
@@ -347,7 +392,7 @@ export default function AdminDashboard({ onLogout }) {
         <TblWrap empty={list.length===0?'No members found':null}>
           {tblHead(['#', {label:'ID', key:'IdentificationNumber'}, {label:'Profile', key:'Name'}, {label:'Contact', key:'ContactNumber'}, {label:'Purpose', key:'PurposeOfStay'}, 'Status', 'Actions'])}
           <tbody>{list.map((m, i)=>(
-            <tr key={m.MemberID} className="border-b border-slate-50 dark:border-slate-700/50 hover:bg-slate-50/50 dark:hover:bg-slate-700/30 transition-colors">
+            <tr key={m.IdentificationNumber} className="border-b border-slate-50 dark:border-slate-700/50 hover:bg-slate-50/50 dark:hover:bg-slate-700/30 transition-colors">
               <td className="px-6 py-5 text-slate-400 font-bold text-xs">{i + 1}</td>
               <td className="px-6 py-5 text-slate-600 dark:text-slate-300 font-black text-xs font-mono tracking-wider">{m.IdentificationNumber}</td>
               <td className="px-6 py-5">
@@ -368,30 +413,156 @@ export default function AdminDashboard({ onLogout }) {
   };
 
   const renderRooms = () => {
-    const list = filt(rooms,['RoomNumber','HostelName','TypeName','RoomStatus']);
-    return (
-      <div className="space-y-6 fade-in animate-in">
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm flex items-center">{searchBar("Search rooms by number, hostel...")}</div>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {list.map(r=>(
-            <div key={r.RoomID} className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 p-6 hover:shadow-md transition-all">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h4 className="font-black text-slate-800 dark:text-white text-xl">Room {r.RoomNumber}</h4>
-                  <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-1">{r.HostelName}</p>
+    const list = filt(rooms, ['RoomNumber', 'HostelName', 'TypeName']);
+
+    // Detail View: Floor-wise
+    if (selectedHostel) {
+      const hostelRooms = list.filter(r => r.HostelName === selectedHostel);
+      const floors = [...new Set(hostelRooms.map(r => r.Floor))].sort((a, b) => a - b);
+      const curHostel = hostels.find(h => h.Name === selectedHostel);
+
+      return (
+        <div className="space-y-8">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={() => setSelectedHostel(null)} 
+                className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all shadow-sm"
+                title="Back to Hostels"
+              >
+                <X size={20} />
+              </button>
+              <div>
+                <h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">{selectedHostel}</h2>
+                <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mt-0.5">Floor-wise Inventory</p>
+              </div>
+            </div>
+            <AddBtn label="Add Room" onClick={() => { setRoomForm(p => ({ ...p, HostelID: curHostel?.HostelID })); setModal('addRoom'); }} />
+          </div>
+
+          <div className="space-y-12">
+            {floors.map(floor => (
+              <div key={floor} className="space-y-4">
+                <div className="flex items-center gap-4 px-2">
+                  <div className="h-[2px] flex-1 bg-gradient-to-r from-slate-200 to-transparent dark:from-slate-700"></div>
+                  <h3 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em]">Floor {floor === 0 ? 'G' : floor}</h3>
+                  <div className="h-[2px] flex-1 bg-gradient-to-l from-slate-200 to-transparent dark:from-slate-700"></div>
                 </div>
-                {r.RoomStatus==='Available'?<Badge color="green">Available</Badge>:r.RoomStatus==='Occupied'?<Badge color="orange">Occupied</Badge>:<Badge color="red">{r.RoomStatus}</Badge>}
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                  {hostelRooms.filter(r => r.Floor === floor).sort((a,b)=>a.RoomNumber.localeCompare(b.RoomNumber)).map(r => {
+                    const occupants = allocations.filter(a => a.RoomID === r.RoomID && a.AllocationStatus === 'Active');
+                    return (
+                      <div key={r.RoomID} 
+                        onClick={() => { setSelectedRoom(r); setModal('roomDetails'); }}
+                        className={`bg-white dark:bg-slate-900 rounded-2xl p-4 border transition-all shadow-sm cursor-pointer hover:ring-2 hover:ring-indigo-500/20 ${r.RoomStatus==='Available'?'border-emerald-100 dark:border-emerald-900/30 hover:shadow-emerald-100/50':'border-slate-100 dark:border-slate-700 hover:shadow-indigo-100/50'}`}>
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <p className="text-lg font-black text-slate-800 dark:text-white leading-none">#{r.RoomNumber}</p>
+                            <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider mt-1.5">{r.TypeName}</p>
+                          </div>
+                          {r.RoomStatus==='Available'?<Badge color="green">Ready</Badge> : r.CurrentOccupancy < r.MaxCapacity ? <Badge color="blue">Partial</Badge> : <Badge color="red">Full</Badge>}
+                        </div>
+
+                        {/* Occupants Overlay */}
+                        <div className="mb-4">
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Current Residents</p>
+                          <div className="flex flex-wrap gap-1.5 min-h-[20px]">
+                            {occupants.map(occ => (
+                              <span key={occ.AllocationID} className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-md text-[9px] font-bold border border-slate-100 dark:border-slate-700 truncate max-w-[80px]">
+                                {occ.MemberName}
+                              </span>
+                            ))}
+                            {occupants.length === 0 && <span className="text-[9px] text-slate-300 italic">No occupants</span>}
+                          </div>
+                        </div>
+
+                        <div className="flex items-end justify-between text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">
+                          <span>Occupancy</span>
+                          <span className={r.CurrentOccupancy >= r.MaxCapacity ? 'text-rose-500' : 'text-indigo-600'}>{r.CurrentOccupancy} / {r.MaxCapacity}</span>
+                        </div>
+                        <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden ring-1 ring-inset ring-slate-100 dark:ring-slate-700">
+                          <div 
+                            className={`rounded-full h-full transition-all duration-500 ${r.CurrentOccupancy >= r.MaxCapacity ? 'bg-rose-500' : 'bg-indigo-500'}`} 
+                            style={{width:`${(r.CurrentOccupancy/r.MaxCapacity)*100}%`}}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-3 text-sm text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl font-medium border border-slate-100 dark:border-slate-700 mb-4">
-                <div><span className="text-slate-400 block text-xs">Type</span>{r.TypeName}</div>
-                <div><span className="text-slate-400 block text-xs">Floor</span>Level {r.Floor}</div>
-                <div><span className="text-slate-400 block text-xs">Capacity</span>{r.MaxCapacity} beds</div>
-                <div><span className="text-slate-400 block text-xs">Occupied</span>{r.CurrentOccupancy} beds</div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // Summary View: Hostel Cards
+    const summary = hostels.map(h => {
+      const hRooms = list.filter(r => r.HostelID === h.HostelID);
+      return {
+        id: h.HostelID,
+        name: h.Name,
+        shortCode: h.ShortCode,
+        availableRooms: hRooms.filter(r => r.RoomStatus === 'Available').length,
+        totalRooms: hRooms.length,
+        availableCapacity: hRooms.reduce((acc, r) => acc + (r.MaxCapacity - r.CurrentOccupancy), 0),
+        totalCapacity: hRooms.reduce((acc, r) => acc + r.MaxCapacity, 0)
+      };
+    });
+
+    return (
+      <div className="space-y-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Hostel Inventory</h2>
+            <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mt-1">Select a building to view space details</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm flex items-center min-w-[300px]">
+              {searchBar("Quick find room...")}
+            </div>
+            <AddBtn label="Add Hostel" onClick={() => setModal('addHostel')} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+          {summary.map(h => (
+            <div 
+              key={h.name} 
+              onClick={() => setSelectedHostel(h.name)}
+              className="group cursor-pointer bg-white dark:bg-slate-900 rounded-[2rem] p-8 border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-600 shadow-sm hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-500 relative overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity duration-500 group-hover:scale-110 transform">
+                <Building2 size={120} />
               </div>
-              <div><div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden ring-1 ring-inset ring-slate-200 dark:ring-slate-600"><div className="bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full h-2.5" style={{width:`${r.MaxCapacity>0?(r.CurrentOccupancy/r.MaxCapacity)*100:0}%`}}/></div></div>
+
+              <div className="relative z-10">
+                <p className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-[0.2em] mb-3">Hostel Block</p>
+                <h3 className="text-3xl font-black text-slate-800 dark:text-white mb-8 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{h.name}</h3>
+                
+                <div className="grid grid-cols-2 gap-8">
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Available Rooms</p>
+                    <p className="text-2xl font-black text-slate-800 dark:text-white">{h.availableRooms} <span className="text-sm text-slate-400 font-bold">/ {h.totalRooms}</span></p>
+                    <div className="w-12 h-1 bg-emerald-500 rounded-full mt-2 opacity-60"></div>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Free Capacity</p>
+                    <p className="text-2xl font-black text-slate-800 dark:text-white">{h.availableCapacity} <span className="text-sm text-slate-400 font-bold">/ {h.totalCapacity}</span></p>
+                    <div className="w-12 h-1 bg-indigo-500 rounded-full mt-2 opacity-60"></div>
+                  </div>
+                </div>
+
+                <div className="mt-8 pt-6 border-t border-slate-50 dark:border-slate-800 flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-400 italic">View detailed floor map</span>
+                  <div className="w-8 h-8 rounded-full bg-slate-50 dark:bg-slate-800 group-hover:bg-indigo-600 flex items-center justify-center transition-all">
+                    <CheckCircle size={16} className="text-slate-300 dark:text-slate-600 group-hover:text-white transition-colors" />
+                  </div>
+                </div>
+              </div>
             </div>
           ))}
-          {list.length===0&&<div className="col-span-1 md:col-span-2 xl:col-span-3 text-center py-20 text-slate-400 font-medium bg-white dark:bg-slate-900 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-700">No rooms met your search criteria.</div>}
         </div>
       </div>
     );
@@ -438,12 +609,26 @@ export default function AdminDashboard({ onLogout }) {
             <tr key={c.ComplaintID} className="border-b border-slate-50 dark:border-slate-700/50 hover:bg-slate-50/50 dark:hover:bg-slate-700/30 transition-colors">
               <td className="px-6 py-5 text-slate-400 font-bold text-xs">{i + 1}</td>
               <td className="px-6 py-5 text-slate-400 font-bold text-xs">#{c.ComplaintID}</td>
-              <td className="px-6 py-5 font-bold text-slate-800 dark:text-white"><div><p>{c.MemberName}</p><p className="text-xs font-medium text-slate-400 mt-1">{c.RaisedDate?new Date(c.RaisedDate).toLocaleDateString():'—'}</p></div></td>
+              <td className="px-6 py-5 font-bold text-slate-800 dark:text-white">
+                <div>
+                  <p>{c.MemberName}</p>
+                  <p className="text-xs font-medium text-slate-400 mt-1">Raised: {c.RaisedDate ? new Date(c.RaisedDate).toLocaleDateString() : '—'}</p>
+                  {c.ResolvedDate && <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">Resolved: {new Date(c.ResolvedDate).toLocaleDateString()}</p>}
+                </div>
+              </td>
               <td className="px-6 py-5 font-bold text-indigo-600 dark:text-indigo-400">{c.CategoryName}</td>
               <td className="px-6 py-5 text-slate-600 max-w-xs"><span className="truncate block font-medium bg-slate-50 dark:bg-slate-800 p-2 rounded-xl border border-slate-100 dark:border-slate-700 text-slate-600 dark:text-slate-300" title={c.Description}>{c.Description}</span></td>
               <td className="px-6 py-5">{sevBadge(c.Severity)}</td>
               <td className="px-6 py-5">{stsBadge(c.Status)}</td>
-              <td className="px-6 py-5"><button onClick={()=>{setSelected(c);setUpForm({Status:c.Status,AssignedTo:c.AssignedTo||'',ResolutionRemarks:c.ResolutionRemarks||''});setModal('complaint');}} className="text-sm bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 px-4 py-2 rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm transition-colors"><Edit size={14}/> Edit</button></td>
+              <td className="px-6 py-5">
+                <button 
+                  onClick={()=>{setSelected(c);setUpForm({Status:c.Status,AssignedTo:c.AssignedTo||'',ResolutionRemarks:c.ResolutionRemarks||''});setModal('complaint');}} 
+                  disabled={['Resolved', 'Closed', 'Rejected'].includes(c.Status)}
+                  className={`text-sm border px-4 py-2 rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm transition-colors ${['Resolved', 'Closed', 'Rejected'].includes(c.Status) ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60' : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200'}`}
+                >
+                  <Edit size={14}/> {['Resolved', 'Closed', 'Rejected'].includes(c.Status) ? 'Finalized' : 'Edit'}
+                </button>
+              </td>
             </tr>
           ))}</tbody>
         </TblWrap>
@@ -515,10 +700,24 @@ export default function AdminDashboard({ onLogout }) {
               <td className="px-6 py-5 text-slate-400 font-bold text-xs">{i + 1}</td>
               <td className="px-6 py-5 text-slate-400 font-bold text-xs uppercase">WO-{mx.RequestID}</td>
               <td className="px-6 py-5 font-black text-rose-600">Room {mx.RoomNumber}</td>
-              <td className="px-6 py-5 font-bold text-slate-800 dark:text-white"><div><p>{mx.RequestedByName}</p><p className="text-xs font-medium text-slate-400 mt-1">{mx.RequestDate?new Date(mx.RequestDate).toLocaleDateString():'—'}</p></div></td>
+              <td className="px-6 py-5 font-bold text-slate-800 dark:text-white">
+                <div>
+                  <p>{mx.RequestedByName}</p>
+                  <p className="text-xs font-medium text-slate-400 mt-1">Requested: {mx.RequestDate ? new Date(mx.RequestDate).toLocaleDateString() : '—'}</p>
+                  {mx.CompletedDate && <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">Finished: {new Date(mx.CompletedDate).toLocaleDateString()}</p>}
+                </div>
+              </td>
               <td className="px-6 py-5 text-slate-600 max-w-xs"><span className="truncate block font-medium bg-slate-50 dark:bg-slate-800 p-2 rounded-xl border border-slate-100 dark:border-slate-700 text-slate-600 dark:text-slate-300" title={mx.Description}>{mx.Description}</span></td>
               <td className="px-6 py-5">{stsBadge(mx.Status)}</td>
-              <td className="px-6 py-5"><button onClick={()=>{setSelected(mx);setUpForm({Status:mx.Status,AssignedTo:mx.AssignedTo||'',ResolutionRemarks:''});setModal('maintenance');}} className="text-sm bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 px-4 py-2 rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm transition-colors"><Edit size={14}/> Manage</button></td>
+              <td className="px-6 py-5">
+                <button 
+                  onClick={()=>{setSelected(mx);setUpForm({Status:mx.Status,AssignedTo:mx.AssignedTo||'',ResolutionRemarks:''});setModal('maintenance');}} 
+                  disabled={['Completed', 'Rejected'].includes(mx.Status)}
+                  className={`text-sm border px-4 py-2 rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm transition-colors ${['Completed', 'Rejected'].includes(mx.Status) ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60' : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200'}`}
+                >
+                  <Edit size={14}/> {['Completed', 'Rejected'].includes(mx.Status) ? 'Verified' : 'Manage'}
+                </button>
+              </td>
             </tr>
           ))}</tbody>
         </TblWrap>
@@ -573,115 +772,258 @@ export default function AdminDashboard({ onLogout }) {
   };
 
   const renderGateScanner = () => (
-    <div className="max-w-xl mx-auto mt-12 bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 dark:border-slate-700 flex flex-col items-center">
-      <div className="w-20 h-20 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center mb-6 shadow-inner ring-4 ring-indigo-50 dark:ring-indigo-900/50"><ShieldCheck size={40}/></div>
-      <h2 className="text-2xl font-black text-slate-800 dark:text-white mb-2">Gate Security Scanner</h2>
-      <p className="text-slate-500 dark:text-slate-400 font-medium text-center mb-8">Scan a Resident's Digital Pass to log gate entry/exit and verify their identity instantly.</p>
-      
-      {!gateCam ? (
-        <div className="w-full space-y-4 mb-8">
-          <div className="w-full flex gap-3">
-            <input 
-              autoFocus
-              className="flex-1 bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-600 text-slate-800 dark:text-white font-bold px-5 py-4 rounded-xl outline-none focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-800 transition-all text-center text-lg tracking-widest placeholder-slate-400 dark:placeholder-slate-500"
-              placeholder="Paste QR code payload..."
-              value={gateScan.qrCode}
-              onChange={e => setGateScan(p=>({...p, qrCode: e.target.value}))}
-              onKeyDown={e => e.key === 'Enter' && handleGateScan()}
-            />
-            <button onClick={handleGateScan} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-8 rounded-xl transition-all shadow-md shadow-indigo-500/20">Verify</button>
-          </div>
-          <button
-            onClick={() => { setGateScan(p=>({...p,result:null})); setGateCam(true); }}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-bold text-sm hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all"
-          >
-            <Camera size={18}/> Use Camera to Scan
-          </button>
+    <div className="max-w-5xl mx-auto mt-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        {/* Left Side: Scanner Controls */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 dark:border-slate-700 flex flex-col items-center">
+          <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center mb-6 shadow-inner ring-4 ring-indigo-50 dark:ring-indigo-900/10 transition-all"><ShieldCheck size={32}/></div>
+          <h2 className="text-2xl font-black text-slate-800 dark:text-white mb-2">Gate Security</h2>
+          <p className="text-slate-500 dark:text-slate-400 font-medium text-center mb-8 text-sm">Scan a Resident's Digital Pass to log gate entry/exit and verify their identity instantly.</p>
+          
+          {!gateCam ? (
+            <div className="w-full space-y-4">
+              <div className="relative group">
+                <input 
+                  autoFocus
+                  className="w-full bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white font-bold px-5 py-4 rounded-2xl outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all text-center text-lg tracking-widest placeholder-slate-400 dark:placeholder-slate-500 shadow-sm"
+                  placeholder="Paste QR code..."
+                  value={gateScan.qrCode}
+                  onChange={e => setGateScan(p=>({...p, qrCode: e.target.value}))}
+                  onKeyDown={e => e.key === 'Enter' && handleGateScan()}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button onClick={handleGateScan} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-indigo-600/20 active:scale-95">Verify Pass</button>
+                <button
+                  onClick={() => { setGateScan(p=>({...p,result:null})); setGateCam(true); }}
+                  className="p-4 rounded-2xl border-2 border-indigo-100 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-bold hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all"
+                  title="Open Camera"
+                >
+                  <Camera size={24}/>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="w-full">
+              <div className="rounded-2xl overflow-hidden border-4 border-indigo-100 dark:border-indigo-900 shadow-xl">
+                <QRCameraScanner
+                  active={gateCam}
+                  onScan={(text) => {
+                    setGateScan(p => ({ ...p, qrCode: text }));
+                    setGateCam(false);
+                    setTimeout(() => handleGateScan(text), 100);
+                  }}
+                  onStop={() => setGateCam(false)}
+                />
+              </div>
+              <button 
+                onClick={() => setGateCam(false)}
+                className="w-full mt-4 py-3 text-slate-500 font-bold hover:text-slate-800 transition-colors"
+              >
+                Cancel Camera Scan
+              </button>
+            </div>
+          )}
         </div>
-      ) : (
-        <div className="w-full mb-8">
-          <QRCameraScanner
-            active={gateCam}
-            onScan={(text) => {
-              setGateScan(p => ({ ...p, qrCode: text }));
-              setGateCam(false);
-              // Auto-trigger verify after camera reads
-              setTimeout(() => handleGateScan(text), 100);
-            }}
-            onStop={() => setGateCam(false)}
-          />
-        </div>
-      )}
 
-      {gateScan.result && (
-        <div className={`w-full p-6 rounded-2xl border-2 flex items-start gap-4 ${gateScan.result.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
-           {gateScan.result.type === 'success' ? <CheckCircle size={32} className="text-emerald-500 flex-shrink-0"/> : <XCircle size={32} className="text-red-500 flex-shrink-0"/>}
-           <div>
-             <h3 className="font-black text-xl mb-1">{gateScan.result.type === 'success' ? 'Access Granted' : 'Access Denied'}</h3>
-             {gateScan.result.type === 'success' ? (
-               <div className="text-sm font-bold flex flex-col gap-1 mt-3">
-                 <p className="text-emerald-900 text-lg">{gateScan.result.data.Name}</p>
-                 <p className="opacity-80 border-t border-emerald-200 pt-2 mt-1">{gateScan.result.data.Hostel} — Room {gateScan.result.data.Room}</p>
-                 <p className="opacity-80">{gateScan.result.data.Department}</p>
-               </div>
-             ) : (
-               <p className="text-sm font-bold opacity-80 mt-1">{gateScan.result.error}</p>
-             )}
-           </div>
+        {/* Right Side: Verification Panel */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 dark:border-slate-700 flex flex-col min-h-[460px]">
+          <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-50 dark:border-slate-800">
+            <h3 className="font-black text-slate-800 dark:text-white uppercase tracking-wider text-xs flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>
+              Verification Terminal
+            </h3>
+            <span className="text-[10px] font-mono text-slate-400">{currentTime.toLocaleTimeString()}</span>
+          </div>
+
+          {!gateScan.result ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-center opacity-40">
+              <div className="w-24 h-24 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-3xl flex items-center justify-center mb-6">
+                <Search size={32} className="text-slate-400" />
+              </div>
+              <p className="text-lg font-bold text-slate-400 uppercase tracking-widest">Waiting for Scan</p>
+              <p className="text-sm text-slate-400 mt-2">Ready to verify incoming request...</p>
+            </div>
+          ) : (
+            <div className="flex-1 animate-in fade-in slide-in-from-bottom-4 duration-300">
+              <div className={`p-6 rounded-2xl border-2 mb-6 flex items-center gap-4 ${gateScan.result.type === 'success' ? 'bg-emerald-50/50 border-emerald-200 text-emerald-800 dark:bg-emerald-900/10 dark:border-emerald-800' : 'bg-red-50/50 border-red-200 text-red-800 dark:bg-red-900/10 dark:border-red-800'}`}>
+                {gateScan.result.type === 'success' ? <CheckCircle size={32} className="text-emerald-500"/> : <XCircle size={32} className="text-red-500"/>}
+                <div>
+                  <h4 className="font-black text-xl">{gateScan.result.type === 'success' ? 'ACCESS GRANTED' : 'ACCESS DENIED'}</h4>
+                  <p className="text-[10px] font-bold opacity-60 uppercase tracking-widest">System Response Logged</p>
+                </div>
+              </div>
+
+              {gateScan.result.type === 'success' ? (
+                <div className="space-y-6">
+                  <div className="flex items-center gap-4 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+                    <div className="w-14 h-14 rounded-2xl bg-indigo-600 flex items-center justify-center text-white text-2xl font-black shadow-lg shadow-indigo-500/30">
+                      {gateScan.result.data.Name?.charAt(0)}
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-400 uppercase tracking-widest leading-tight">Resident Name</p>
+                      <p className="text-xl font-black text-slate-800 dark:text-white">{gateScan.result.data.Name}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Building/Block</p>
+                      <p className="font-bold text-slate-800 dark:text-white uppercase truncate">{gateScan.result.data.Hostel}</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Room Assigned</p>
+                      <p className="font-bold text-slate-800 dark:text-white">#{gateScan.result.data.Room}</p>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-indigo-50/30 dark:bg-indigo-900/10 rounded-2xl border border-indigo-100/50 dark:border-indigo-900/50">
+                    <p className="text-xs font-bold text-indigo-500 dark:text-indigo-400 flex items-center gap-2 mb-2">
+                      <PackageCheck size={14}/> DEPARTMENT RECORD
+                    </p>
+                    <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{gateScan.result.data.Department}</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="text-red-500 mb-4 animate-bounce"><AlertCircle size={48}/></div>
+                  <p className="text-red-600 dark:text-red-400 font-bold text-lg mb-2">Verification Failed</p>
+                  <p className="text-slate-500 dark:text-slate-400 text-sm px-6 font-medium italic">"{gateScan.result.error}"</p>
+                </div>
+              )}
+              
+              <button 
+                onClick={() => setGateScan(p => ({ ...p, result: null, qrCode: '' }))}
+                className="w-full mt-6 py-3 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-xs font-bold uppercase tracking-widest"
+              >
+                Clear Terminal
+              </button>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 
   const renderMaintScanner = () => (
-    <div className="max-w-xl mx-auto mt-12 bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 dark:border-slate-700 flex flex-col items-center">
-      <div className="w-20 h-20 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 rounded-full flex items-center justify-center mb-6 shadow-inner ring-4 ring-rose-50 dark:ring-rose-900/50"><Wrench size={40}/></div>
-      <h2 className="text-2xl font-black text-slate-800 dark:text-white mb-2">Maintenance Verification Scanner</h2>
-      <p className="text-slate-500 dark:text-slate-400 font-medium text-center mb-8">Scan a Resident's QR (for occupied rooms) or a Room QR (for vacant ones) to automatically verify and close active work orders.</p>
-      
-      {!maintCam ? (
-        <div className="w-full space-y-4 mb-8">
-          <div className="w-full flex gap-3">
-            <input 
-              autoFocus
-              className="flex-1 bg-slate-50 border-2 border-slate-200 text-slate-800 font-bold px-5 py-4 rounded-xl outline-none focus:border-rose-500 focus:bg-white transition-all text-center text-lg tracking-widest placeholder-slate-400"
-              placeholder="Paste QR code payload..."
-              value={maintScan.qrCode}
-              onChange={e => setMaintScan(p=>({...p, qrCode: e.target.value}))}
-              onKeyDown={e => e.key === 'Enter' && handleMaintScan()}
-            />
-            <button onClick={handleMaintScan} className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-8 rounded-xl transition-all shadow-md shadow-rose-500/20">Verify</button>
-          </div>
-          <button
-            onClick={() => { setMaintScan(p=>({...p,result:null})); setMaintCam(true); }}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 font-bold text-sm hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-all"
-          >
-            <Camera size={18}/> Use Camera to Scan
-          </button>
+    <div className="max-w-5xl mx-auto mt-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        {/* Left Side: Scanner Controls */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 dark:border-slate-700 flex flex-col items-center">
+          <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center mb-6 shadow-inner ring-4 ring-indigo-50 dark:ring-indigo-900/10 transition-all"><Wrench size={32}/></div>
+          <h2 className="text-2xl font-black text-slate-800 dark:text-white mb-2">Maintenance Verification</h2>
+          <p className="text-slate-500 dark:text-slate-400 font-medium text-center mb-8 text-sm">Scan a Resident's QR or a Room QR to automatically verify and close active work orders.</p>
+          
+          {!maintCam ? (
+            <div className="w-full space-y-4">
+              <div className="relative group">
+                <input 
+                  autoFocus
+                  className="w-full bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white font-bold px-5 py-4 rounded-2xl outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all text-center text-lg tracking-widest placeholder-slate-400 dark:placeholder-slate-500 shadow-sm"
+                  placeholder="Paste QR code..."
+                  value={maintScan.qrCode}
+                  onChange={e => setMaintScan(p=>({...p, qrCode: e.target.value}))}
+                  onKeyDown={e => e.key === 'Enter' && handleMaintScan()}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button onClick={handleMaintScan} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-indigo-600/20 active:scale-95">Verify Work</button>
+                <button
+                  onClick={() => { setMaintScan(p=>({...p,result:null})); setMaintCam(true); }}
+                  className="p-4 rounded-2xl border-2 border-indigo-100 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-bold hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all"
+                  title="Open Camera"
+                >
+                  <Camera size={24}/>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="w-full">
+              <div className="rounded-2xl overflow-hidden border-4 border-indigo-100 dark:border-indigo-900 shadow-xl">
+                <QRCameraScanner
+                  active={maintCam}
+                  onScan={(text) => {
+                    setMaintScan(p => ({ ...p, qrCode: text }));
+                    setMaintCam(false);
+                    setTimeout(() => handleMaintScan(text), 100);
+                  }}
+                  onStop={() => setMaintCam(false)}
+                />
+              </div>
+              <button 
+                onClick={() => setMaintCam(false)}
+                className="w-full mt-4 py-3 text-slate-500 font-bold hover:text-slate-800 transition-colors"
+              >
+                Cancel Camera Scan
+              </button>
+            </div>
+          )}
         </div>
-      ) : (
-        <div className="w-full mb-8">
-          <QRCameraScanner
-            active={maintCam}
-            onScan={(text) => {
-              setMaintScan(p => ({ ...p, qrCode: text }));
-              setMaintCam(false);
-              setTimeout(() => handleMaintScan(text), 100);
-            }}
-            onStop={() => setMaintCam(false)}
-          />
-        </div>
-      )}
 
-      {maintScan.result && (
-        <div className={`w-full p-6 rounded-2xl border-2 flex items-start gap-4 ${maintScan.result.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
-           {maintScan.result.type === 'success' ? <CheckCircle size={32} className="text-emerald-500 flex-shrink-0"/> : <XCircle size={32} className="text-rose-500 flex-shrink-0"/>}
-           <div>
-             <h3 className="font-black text-xl mb-1">{maintScan.result.type === 'success' ? 'Maintenance Verified' : 'Verification Failed'}</h3>
-             <p className="text-sm font-bold opacity-80 mt-1">{maintScan.result.type === 'success' ? maintScan.result.message : maintScan.result.error}</p>
-           </div>
+        {/* Right Side: Work Order Panel */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 dark:border-slate-700 flex flex-col min-h-[460px]">
+          <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-50 dark:border-slate-800">
+            <h3 className="font-black text-slate-800 dark:text-white uppercase tracking-wider text-xs flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>
+              Maintenance Log Terminal
+            </h3>
+            <span className="text-[10px] font-mono text-slate-400">{currentTime.toLocaleTimeString()}</span>
+          </div>
+
+          {!maintScan.result ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-center opacity-40">
+              <div className="w-24 h-24 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-3xl flex items-center justify-center mb-6">
+                <Wrench size={32} className="text-slate-400" />
+              </div>
+              <p className="text-lg font-bold text-slate-400 uppercase tracking-widest">Waiting for Scan</p>
+              <p className="text-sm text-slate-400 mt-2">Ready to verify room maintenance...</p>
+            </div>
+          ) : (
+            <div className="flex-1 animate-in fade-in slide-in-from-bottom-4 duration-300">
+              <div className={`p-6 rounded-2xl border-2 mb-6 flex items-center gap-4 ${maintScan.result.type === 'success' ? 'bg-emerald-50/50 border-emerald-200 text-emerald-800 dark:bg-emerald-900/10 dark:border-emerald-800' : 'bg-red-50/50 border-red-200 text-red-800 dark:bg-red-900/10 dark:border-red-800'}`}>
+                {maintScan.result.type === 'success' ? <CheckCircle size={32} className="text-emerald-500"/> : <XCircle size={32} className="text-red-500"/>}
+                <div>
+                  <h4 className="font-black text-xl">{maintScan.result.type === 'success' ? 'WORK VERIFIED' : 'SCAN ERROR'}</h4>
+                  <p className="text-[10px] font-bold opacity-60 uppercase tracking-widest">Digital Audit Timestamped</p>
+                </div>
+              </div>
+
+              {maintScan.result.type === 'success' ? (
+                <div className="space-y-6">
+                  <div className="p-5 bg-emerald-50/30 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100/50 dark:border-emerald-900/50">
+                    <p className="text-xl font-black text-emerald-700 dark:text-emerald-400 mb-2">Success!</p>
+                    <p className="text-sm font-bold text-slate-700 dark:text-slate-300 leading-relaxed">{maintScan.result.message}</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 text-center">
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Status Update</p>
+                      <p className="font-black text-emerald-600">CLOSED</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Verification</p>
+                      <p className="font-black text-blue-600">QR-AUTH</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="text-red-500 mb-4 animate-bounce"><AlertCircle size={48}/></div>
+                  <p className="text-red-600 dark:text-red-400 font-bold text-lg mb-2">Verification Failed</p>
+                  <p className="text-slate-500 dark:text-slate-400 text-sm px-6 font-medium italic">"{maintScan.result.error}"</p>
+                </div>
+              )}
+              
+              <button 
+                onClick={() => setMaintScan(p => ({ ...p, result: null, qrCode: '' }))}
+                className="w-full mt-6 py-3 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-xs font-bold uppercase tracking-widest"
+              >
+                Clear Terminal
+              </button>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 
@@ -690,24 +1032,35 @@ export default function AdminDashboard({ onLogout }) {
 
   return (
     <div className="flex h-screen bg-[#f3f4f6] dark:bg-[#0d1117] font-sans">
-      <aside className="w-72 bg-[#0b0f19] flex flex-col flex-shrink-0 relative overflow-hidden text-slate-300">
+      {/* Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-30 lg:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      <aside className={`fixed lg:relative z-40 w-72 h-full bg-[#0b0f19] flex flex-col flex-shrink-0 overflow-hidden text-slate-300 transition-transform duration-300 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600 opacity-10 rounded-full mix-blend-screen filter blur-3xl translate-x-1/2 -translate-y-1/2"></div>
-        <div className="px-6 py-8 relative z-10">
+        <div className="px-6 py-8 relative z-10 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl p-3 shadow-lg shadow-blue-500/30 text-white"><Building2 size={24}/></div>
             <div><h1 className="text-white font-black text-2xl tracking-tight">HostelMS</h1><p className="text-blue-400 text-xs font-bold tracking-widest uppercase mt-0.5">Admin Office</p></div>
           </div>
+          <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-2 text-slate-400 hover:text-white">
+            <X size={24} />
+          </button>
         </div>
         <nav className="flex-1 px-4 py-2 space-y-1 overflow-y-auto relative z-10">
           {navItems.map(item=>(
-            <button key={item.id} onClick={()=>{setSection(item.id);setSearch('');}} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-sm font-bold transition-all duration-300 ${section===item.id?'bg-blue-600 text-white shadow-lg shadow-blue-900/40 translate-x-1':'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+            <button key={item.id} onClick={()=>{setSection(item.id);setSearch(''); setIsSidebarOpen(false);}} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-sm font-bold transition-all duration-300 ${section===item.id?'bg-blue-600 text-white shadow-lg shadow-blue-900/40 translate-x-1':'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
               <item.icon size={20} className={section===item.id?'text-white drop-shadow-sm':'text-slate-500'}/>
               {item.label}
             </button>
           ))}
         </nav>
         <div className="p-4 relative z-10 bg-slate-800/50 backdrop-blur-md m-4 rounded-2xl border border-slate-700/50 flex flex-col gap-2">
-          <button onClick={()=>setModal('password')} className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-700 transition-colors">
+          <button onClick={()=>{setModal('password'); setIsSidebarOpen(false);}} className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-700 transition-colors">
             <Lock size={18}/> Change Password
           </button>
           <button onClick={onLogout} className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-rose-400 hover:text-white hover:bg-rose-500 transition-colors">
@@ -716,9 +1069,23 @@ export default function AdminDashboard({ onLogout }) {
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col overflow-hidden relative">
-        <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-700/60 px-8 py-5 flex items-center justify-between z-20 sticky top-0 shadow-[0_4px_30px_rgba(0,0,0,0.02)]">
-          <div><h2 className="text-3xl font-black text-slate-800 dark:text-white flex items-center gap-3">{curNav?.label}</h2><p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-1">Live Management Dashboard</p></div>
+      <div className="flex-1 flex flex-col overflow-hidden relative w-full">
+        <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-700/60 px-4 md:px-8 py-5 flex items-center justify-between z-20 sticky top-0 shadow-[0_4px_30px_rgba(0,0,0,0.02)]">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setIsSidebarOpen(true)}
+              className="lg:hidden p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
+            >
+              <Menu size={24} />
+            </button>
+            <div className="hidden sm:block">
+              <h2 className="text-3xl font-black text-slate-800 dark:text-white flex items-center gap-3">{curNav?.label}</h2>
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-1">Live Management Dashboard</p>
+            </div>
+            <div className="sm:hidden">
+              <h2 className="text-xl font-black text-slate-800 dark:text-white">{curNav?.label}</h2>
+            </div>
+          </div>
           <div className="flex items-center gap-4">
             <div className="hidden sm:block text-right mr-2">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Logged in as:</p>
@@ -794,9 +1161,14 @@ export default function AdminDashboard({ onLogout }) {
       {/* Allocate Room Modal */}
       <Modal show={modal==='allocate'} onClose={closeModal} title="Process Space Allocation">
         <div className="space-y-1">
-          <Sel label="Select Resident *" value={allocForm.MemberID} onChange={e=>setAllocForm(p=>({...p,MemberID:e.target.value}))}>
+          <Sel label="Select Resident *" value={allocForm.IdentificationNumber} onChange={e=>setAllocForm(p=>({...p,IdentificationNumber:e.target.value}))}>
             <option value="">Choose resident...</option>
-            {members.filter(m=>m.IsActive).map(m=><option key={m.MemberID} value={m.MemberID}>{m.Name}</option>)}
+            {members.filter(m => 
+              m.IsActive && 
+              !allocations.some(a => a.IdentificationNumber === m.IdentificationNumber && a.AllocationStatus === 'Active')
+            ).map(m => (
+              <option key={m.IdentificationNumber} value={m.IdentificationNumber}>{m.Name}</option>
+            ))}
           </Sel>
           <Sel label="Select Available Room *" value={allocForm.RoomID} onChange={e=>setAllocForm(p=>({...p,RoomID:e.target.value}))}>
             <option value="">Choose vacant room...</option>
@@ -821,7 +1193,7 @@ export default function AdminDashboard({ onLogout }) {
               <p className="font-bold text-lg mb-1">{selected.MemberName} <span className="text-blue-400 font-medium">— {selected.CategoryName}</span></p>
               <p className="text-slate-300 italic">"{selected.Description}"</p>
             </div>
-            <Sel label="Update Lifecycle Status" value={upForm.Status} onChange={e=>setUpForm(p=>({...p,Status:e.target.value}))}>{['Open','In Progress','Resolved','Rejected','Closed'].map(s=><option key={s}>{s}</option>)}</Sel>
+            <Sel label="Update Lifecycle Status" value={upForm.Status} onChange={e=>setUpForm(p=>({...p,Status:e.target.value}))}>{['Open','In Progress','Rejected'].map(s=><option key={s}>{s}</option>)}</Sel>
             <Inp label="Assign Technician/Staff" value={upForm.AssignedTo} onChange={e=>setUpForm(p=>({...p,AssignedTo:e.target.value}))} placeholder="e.g. John (Electrician)"/>
             <Txa label="Engineer's Resolution Remarks" value={upForm.ResolutionRemarks} onChange={e=>setUpForm(p=>({...p,ResolutionRemarks:e.target.value}))} placeholder="Describe the fix applied..."/>
             <div className="flex gap-4 pt-6">
@@ -840,7 +1212,7 @@ export default function AdminDashboard({ onLogout }) {
               <p className="font-bold text-lg mb-1">Room {selected.RoomNumber} <span className="text-rose-200 font-medium">— {selected.RequestedByName}</span></p>
               <p className="text-white drop-shadow-sm">"{selected.Description}"</p>
             </div>
-            <Sel label="Work Status" value={upForm.Status} onChange={e=>setUpForm(p=>({...p,Status:e.target.value}))}>{['Pending','In Progress','Rejected'].map(s=><option key={s}>{s}</option>)}</Sel>
+            <Sel label="Work Status" value={upForm.Status} onChange={e=>setUpForm(p=>({...p,Status:e.target.value}))}>{['Pending','In Progress', 'Rejected'].map(s=><option key={s}>{s}</option>)}</Sel>
             
             <Inp label="Delegated Contractor/Staff" value={upForm.AssignedTo} onChange={e=>setUpForm(p=>({...p,AssignedTo:e.target.value}))} placeholder="Maintenance team name"/>
             <Txa label="Resolution Remarks" value={upForm.ResolutionRemarks} onChange={e=>setUpForm(p=>({...p,ResolutionRemarks:e.target.value}))}/>
@@ -858,9 +1230,9 @@ export default function AdminDashboard({ onLogout }) {
       {/* Add Fee Modal */}
       <Modal show={modal==='addFee'} onClose={closeModal} title="Issue Invoice / Record Receipt">
         <div className="space-y-1">
-          <Sel label="Select Payer/Resident *" value={feeForm.MemberID} onChange={e=>setFeeForm(p=>({...p,MemberID:e.target.value}))}>
-            <option value="">Search resident database...</option>
-            {members.map(m=><option key={m.MemberID} value={m.MemberID}>{m.Name}</option>)}
+          <Sel label="Select Payer/Resident *" value={feeForm.IdentificationNumber} onChange={e=>setFeeForm(p=>({...p,IdentificationNumber:e.target.value}))}>
+            <option value="">Choose account...</option>
+            {members.map(m=><option key={m.IdentificationNumber} value={m.IdentificationNumber}>{m.Name}</option>)}
           </Sel>
           <Sel label="Billing Category *" value={feeForm.FeeCategoryID} onChange={e=>setFeeForm(p=>({...p,FeeCategoryID:e.target.value}))}>
             <option value="">Select accounting ledger...</option>
@@ -885,33 +1257,107 @@ export default function AdminDashboard({ onLogout }) {
       <Modal show={modal==='memberDetails'} onClose={closeModal} title="Resident Profile Overview">
         {selected && (
           <div className="space-y-4">
-            <div className="flex items-center gap-6 bg-slate-50 border border-slate-100 dark:border-slate-700p-6 rounded-3xl shadow-inner mb-6">
+            <div className="flex p-2 items-center gap-6 dark:bg-slate-800/60 bg-slate-50 border border-slate-100 dark:border-slate-700p-6 rounded-2xl shadow-inner mb-6">
               <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-100 to-blue-200 text-blue-700 flex items-center justify-center font-black text-3xl shadow-sm border border-blue-50">
                 {selected.Name?.charAt(0)}
               </div>
               <div>
-                <h3 className="text-2xl font-black text-slate-800">{selected.Name}</h3>
+                <h3 className="text-2xl font-black dark:text-slate-50 text-slate-800">{selected.Name}</h3>
                 <p className="text-sm font-bold text-slate-500 mb-2">{selected.PurposeOfStay} — {selected.Department || 'N/A'}</p>
                 {selected.IsActive ? <Badge color="green">Active Record</Badge> : <Badge color="red">Inactive</Badge>}
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-x-4 gap-y-6">
-              <div><p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Email</p><p className="font-semibold text-slate-700">{selected.Email}</p></div>
-              <div><p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Phone</p><p className="font-semibold text-slate-700">{selected.ContactNumber}</p></div>
-              <div><p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Govt. / College ID</p><p className="font-semibold text-slate-700">{selected.IdentificationNumber} <span className="text-slate-400">({selected.IdentificationType || 'N/A'})</span></p></div>
-              <div><p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">QR Digital Pass</p><code className="bg-slate-100 px-2 py-1 rounded text-xs font-mono text-slate-600">{selected.QRCode || selected.IdentificationNumber}</code></div>
-              <div><p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Age / DOB</p><p className="font-semibold text-slate-700">{selected.Age} years <span className="text-slate-400">({new Date(selected.DateOfBirth).toLocaleDateString()})</span></p></div>
-              <div><p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Enrollment Date</p><p className="font-semibold text-slate-700">{new Date(selected.AllocatedDate).toLocaleDateString()}</p></div>
+              <div><p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Email</p><p className="font-semibold text-slate-500">{selected.Email}</p></div>
+              <div><p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Phone</p><p className="font-semibold text-slate-500">{selected.ContactNumber}</p></div>
+              <div><p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Govt. / College ID</p><p className="font-semibold text-slate-500">{selected.IdentificationNumber} <span className="text-slate-400">({selected.IdentificationType || 'N/A'})</span></p></div>
+              <div><p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">QR Digital Pass</p><code className="bg-slate-100 px-2 py-1 rounded text-xs font-mono text-slate-500">{selected.QRCode || selected.IdentificationNumber}</code></div>
+              <div><p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Age / DOB</p><p className="font-semibold text-slate-500">{selected.Age} years <span className="text-slate-400">({new Date(selected.DateOfBirth).toLocaleDateString()})</span></p></div>
+              <div><p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Enrollment Date</p><p className="font-semibold text-slate-500">{new Date(selected.AllocatedDate).toLocaleDateString()}</p></div>
               <div className="col-span-2"><p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Permanent Address</p><p className="font-semibold text-slate-700 text-sm bg-slate-50 p-3 rounded-xl border border-slate-100 dark:border-slate-700 text-slate-800 dark:text-slate-300 dark:bg-slate-800">{selected.Address || 'No address provided on file.'}</p></div>
             </div>
 
             <div className="flex gap-4 pt-6">
-              <button onClick={() => handleDeleteMember(selected.MemberID)} className="flex-1 bg-rose-50 text-rose-600 border border-rose-200 py-3 rounded-2xl text-sm font-bold hover:bg-rose-100 transition-colors shadow-sm">Delete Profile Data</button>
-              <button onClick={closeModal} className="flex-1 border border-slate-200 bg-white text-slate-800 py-3 rounded-2xl text-sm font-bold hover:bg-slate-50 transition-colors shadow-sm shadow-slate-200/50">Close Profile View</button>
+              <button onClick={() => handleDeleteMember(selected.IdentificationNumber)} className="flex-1 py-3 rounded-2xl text-sm font-bold transition-colors shadow-sm hover:bg-rose-200 bg-rose-100 dark:bg-rose-900/30 hover:dark:bg-rose-700/30 text-rose-700 dark:text-rose-500 border-rose-200 border dark:border-rose-800 ">Delete Profile Data</button>
+              <button onClick={closeModal} className="flex-1 border border-slate-200 bg-white text-slate-800 py-3 dark:text-slate-50 dark:hover:bg-slate-800 rounded-2xl text-sm font-bold hover:bg-slate-50 dark:bg-slate-800/60 transition-colors shadow-sm shadow-slate-200/50">Close Profile View</button>
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal show={modal==='addHostel'} onClose={closeModal} title="Add New Hostel Block">
+        <Inp label="Hostel Name *" value={hostelForm.Name} onChange={e=>setHostelForm(p=>({...p,Name:e.target.value}))} placeholder="e.g. Narmada Hostel" />
+        <div className="grid grid-cols-2 gap-4">
+          <Inp label="Short Code *" value={hostelForm.ShortCode} onChange={e=>setHostelForm(p=>({...p,ShortCode:e.target.value.toUpperCase()}))} placeholder="e.g. NRM" />
+          <Inp label="Warden Name *" value={hostelForm.WardenName} onChange={e=>setHostelForm(p=>({...p,WardenName:e.target.value}))} />
+        </div>
+        <Inp label="Warden Contact *" value={hostelForm.WardenContact} onChange={e=>setHostelForm(p=>({...p,WardenContact:e.target.value}))} />
+        <Txa label="Address *" value={hostelForm.Address} onChange={e=>setHostelForm(p=>({...p,Address:e.target.value}))} />
+        <button onClick={handleAddHostel} disabled={!hostelForm.Name || !hostelForm.ShortCode || !hostelForm.WardenName || !hostelForm.WardenContact || !hostelForm.Address} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-2xl mt-4 transition-all shadow-lg shadow-blue-500/30">Create Hostel</button>
+      </Modal>
+
+      <Modal show={modal==='roomDetails'} onClose={closeModal} title={`Room Details: ${selectedRoom?.RoomNumber}`}>
+        {selectedRoom && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Hostel Block</p>
+                <p className="font-bold text-slate-700 dark:text-slate-200">{selectedRoom.HostelName}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Room Type</p>
+                <p className="font-bold text-slate-700 dark:text-slate-200">{selectedRoom.TypeName}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                <Users size={14}/> Assigned Residents ({selectedRoom.CurrentOccupancy} / {selectedRoom.MaxCapacity})
+              </p>
+              <div className="space-y-3">
+                {allocations.filter(a => a.RoomID === selectedRoom.RoomID && a.AllocationStatus === 'Active').map(occ => (
+                  <div key={occ.AllocationID} className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 p-4 rounded-2xl shadow-sm hover:border-indigo-200 transition-all group">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-black text-slate-800 dark:text-white group-hover:text-indigo-600 transition-colors">{occ.MemberName}</p>
+                        <p className="text-xs font-bold text-slate-500 mt-1">{occ.Department} • Year {occ.YearOfStudy}</p>
+                        <div className="flex items-center gap-4 mt-3">
+                          <div className="text-[10px] font-bold text-slate-400"><p className="uppercase mb-0.5">Contact</p><p className="text-slate-700 dark:text-slate-300">{occ.MemberContact || 'N/A'}</p></div>
+                          <div className="text-[10px] font-bold text-slate-400"><p className="uppercase mb-0.5">Email</p><p className="text-slate-700 dark:text-slate-300">{occ.Email || 'N/A'}</p></div>
+                        </div>
+                      </div>
+                      <button onClick={() => { setSelected(members.find(m=>m.IdentificationNumber===occ.IdentificationNumber)); setModal('memberDetails'); }} className="p-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors">
+                        <Users size={16}/>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {selectedRoom.CurrentOccupancy === 0 && (
+                  <div className="py-12 text-center bg-slate-50 dark:bg-slate-900/30 rounded-3xl border-2 border-dashed border-slate-100 dark:border-slate-800">
+                    <p className="text-sm font-bold text-slate-300 uppercase tracking-widest">Room is VACANT</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            <button onClick={closeModal} className="w-full bg-slate-900 text-white font-bold py-4 rounded-2xl shadow-lg transition-all hover:bg-slate-800">Dismiss Room View</button>
+          </div>
+        )}
+      </Modal>
+
+      <Modal show={modal==='addRoom'} onClose={closeModal} title="Add Room Configuration">
+        <Sel label="Target Hostel" value={roomForm.HostelID} disabled className="bg-slate-100">
+          {hostels.map(h=><option key={h.HostelID} value={h.HostelID}>{h.Name}</option>)}
+        </Sel>
+        <Sel label="Room Type *" value={roomForm.RoomTypeID} onChange={e=>setRoomForm(p=>({...p,RoomTypeID:e.target.value}))}>
+          <option value="">Select type...</option>
+          {roomTypes.map(rt=><option key={rt.RoomTypeID} value={rt.RoomTypeID}>{rt.TypeName} (Cap: {rt.BaseCapacity})</option>)}
+        </Sel>
+        <div className="grid grid-cols-2 gap-4">
+          <Inp label="Room Number *" value={roomForm.RoomNumber} onChange={e=>setRoomForm(p=>({...p,RoomNumber:e.target.value}))} placeholder="e.g. 101" />
+          <Inp label="Floor Level *" type="number" value={roomForm.Floor} onChange={e=>setRoomForm(p=>({...p,Floor:parseInt(e.target.value)||0}))} />
+        </div>
+        <button onClick={handleAddRoom} disabled={!roomForm.RoomTypeID || !roomForm.RoomNumber} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-2xl mt-4 transition-all shadow-lg shadow-indigo-500/30">Release Room to Inventory</button>
       </Modal>
 
       <Modal show={modal==='password'} onClose={closeModal} title="Change Admin Password">

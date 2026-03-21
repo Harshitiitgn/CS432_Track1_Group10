@@ -25,26 +25,24 @@ router.get('/', authenticateToken, requireAdmin, async (req, res) => {
 router.get('/member/:id', authenticateToken, requireOwnershipOrAdmin, async (req, res) => {
   try {
     const db = getDB();
-    const memberId = parseInt(req.params.id);
+    const identificationNumber = req.params.id;
     
-    if (req.user.role !== 'Admin' && req.user.memberId !== memberId) {
+    if (req.user.role !== 'Admin' && req.user.identificationNumber !== identificationNumber) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    const alloc = await db.get(`SELECT RoomID FROM Allocation WHERE MemberID = ? AND AllocationStatus='Active' ORDER BY AllocationID DESC LIMIT 1`, [memberId]);
-    if (!alloc) {
-      return res.json([]);
-    }
-
+    const alloc = await db.get(`SELECT RoomID FROM Allocation WHERE IdentificationNumber = ? AND AllocationStatus='Active' ORDER BY AllocationID DESC LIMIT 1`, [identificationNumber]);
+    if (!alloc) return res.json([]);
+    
     const items = await db.all(`
-      SELECT f.*, t.TypeName 
-      FROM FurnitureItem f
-      JOIN FurnitureType t ON f.FurnitureTypeID = t.FurnitureTypeID
-      WHERE f.RoomID = ?
+      SELECT fi.*, ft.TypeName 
+      FROM FurnitureItem fi
+      JOIN FurnitureType ft ON fi.TypeID = ft.TypeID
+      WHERE fi.RoomID = ?
     `, [alloc.RoomID]);
     res.json(items);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 

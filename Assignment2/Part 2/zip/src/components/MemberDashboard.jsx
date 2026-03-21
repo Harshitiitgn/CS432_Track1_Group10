@@ -2,7 +2,7 @@ import QRCode from 'react-qr-code';
 import { useState, useEffect, useCallback } from 'react';
 import {
   LayoutDashboard, Key, MessageSquare, UserCheck, 
-  Banknote, Wrench, LogOut, Building2, Plus, X, 
+  Banknote, Wrench, LogOut, Building2, Plus, X, Menu,
   CreditCard, Calendar, CheckCircle, AlertCircle, Search, PackageCheck, Lock, Moon, Sun
 } from 'lucide-react';
 import { useTheme } from '../ThemeContext.jsx';
@@ -50,11 +50,12 @@ function Badge({ color, children }) {
 const sevBadge = s => s==='Critical'?<Badge color="red">{s}</Badge>:s==='High'?<Badge color="orange">{s}</Badge>:s==='Medium'?<Badge color="yellow">{s}</Badge>:<Badge color="gray">{s}</Badge>;
 const stsBadge = s => (s==='Active'||s==='Open'||s==='Paid')?<Badge color="green">{s}</Badge>:(s==='In Progress'||s==='Pending')?<Badge color="blue">{s}</Badge>:(s==='Resolved'||s==='Completed')?<Badge color="purple">{s}</Badge>:(s==='Rejected'||s==='Closed'||s==='Overdue')?<Badge color="red">{s}</Badge>:<Badge color="gray">{s}</Badge>;
 
-export default function MemberDashboard({ memberId, onLogout }) {
+export default function MemberDashboard({ identificationNumber, onLogout }) {
   const { dark, toggle: toggleTheme } = useTheme();
   const [section, setSection] = useState('overview');
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   const [member, setMember] = useState(null);
   const [allocations, setAllocations] = useState([]);
@@ -66,6 +67,7 @@ export default function MemberDashboard({ memberId, onLogout }) {
   
   const [compCats, setCompCats] = useState([]);
   const [feeCats, setFeeCats] = useState([]);
+  const [wardens, setWardens] = useState([]);
 
   // Forms
   const [compForm, setCompForm] = useState({ CategoryID:'', Description:'', Severity:'Medium', RoomID:'' });
@@ -76,19 +78,20 @@ export default function MemberDashboard({ memberId, onLogout }) {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [m, a, c, v, f, mx, cats, fcats, furn] = await Promise.all([
-        API(`/api/members/${memberId}`),
-        API(`/api/allocations/member/${memberId}`),
-        API(`/api/complaints/member/${memberId}`),
-        API(`/api/visitors/member/${memberId}`),
-        API(`/api/fees/member/${memberId}`),
-        API(`/api/maintenance/member/${memberId}`).catch(()=>[]), // If backend hasn't implemented this route yet
+      const [m, a, c, v, f, mx, cats, fcats, furn, h] = await Promise.all([
+        API(`/api/members/${identificationNumber}`),
+        API(`/api/allocations/member/${identificationNumber}`),
+        API(`/api/complaints/member/${identificationNumber}`),
+        API(`/api/visitors/member/${identificationNumber}`),
+        API(`/api/fees/member/${identificationNumber}`),
+        API(`/api/maintenance/member/${identificationNumber}`).catch(()=>[]), // If backend hasn't implemented this route yet
         API('/api/complaints/categories').catch(()=>[]),
         API('/api/fees/categories').catch(()=>[]),
-        API(`/api/furniture/member/${memberId}`).catch(()=>[])
+        API(`/api/furniture/member/${identificationNumber}`).catch(()=>[]),
+        API('/api/hostels/wardens').catch(()=>[])
       ]);
       setMember(m); setAllocations(a); setComplaints(c); setVisitors(v); setFees(f); setMaintenance(mx);
-      setCompCats(cats); setFeeCats(fcats); setFurniture(furn||[]);
+      setCompCats(cats); setFeeCats(fcats); setFurniture(furn||[]); setWardens(h||[]);
       
       const activeRoom = a.find(x => x.AllocationStatus === 'Active')?.RoomID || '';
       setCompForm(p => ({...p, RoomID: activeRoom}));
@@ -98,7 +101,7 @@ export default function MemberDashboard({ memberId, onLogout }) {
     } finally {
       setLoading(false);
     }
-  }, [memberId]);
+  }, [identificationNumber]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -113,7 +116,7 @@ export default function MemberDashboard({ memberId, onLogout }) {
 
   const handleRegisterVisitor = async () => {
     try {
-      await API('/api/visitors', 'POST', { ...visForm, MemberID: parseInt(memberId) });
+      await API('/api/visitors', 'POST', { ...visForm, IdentificationNumber: identificationNumber });
       setModal(null);
       setVisForm({ VisitorName:'', VisitorContact:'', Relation:'', Purpose:'', InDateTime:new Date().toISOString().slice(0,16) });
       fetchAll();
@@ -122,7 +125,7 @@ export default function MemberDashboard({ memberId, onLogout }) {
 
   const handleNewMaintenance = async () => {
     try {
-      await API('/api/maintenance', 'POST', { ...maintForm, RequestedBy: parseInt(memberId) });
+      await API('/api/maintenance', 'POST', { ...maintForm, RequestedBy: identificationNumber });
       setModal(null);
       setMaintForm(p=>({...p, Description:''}));
       fetchAll();
@@ -193,8 +196,29 @@ export default function MemberDashboard({ memberId, onLogout }) {
           {activeAlloc ? (
             <div>
               <p className="text-2xl font-black text-gray-800 dark:text-white mb-1">{activeAlloc.HostelName}</p>
-              <p className="text-lg font-bold text-blue-600 mb-2">Room {activeAlloc.RoomNumber}</p>
-              <p className="text-sm text-gray-500 dark:text-slate-400">Check-in: {new Date(activeAlloc.CheckInDate).toLocaleDateString()}</p>
+              <p className="text-lg font-bold text-blue-600 mb-4">Room {activeAlloc.RoomNumber}</p>
+              
+              <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800 space-y-2 mb-4">
+                <p className="text-[10px] font-black text-blue-400 dark:text-blue-500 uppercase tracking-widest mb-1">Hostel Warden</p>
+                <p className="text-sm font-bold text-gray-800 dark:text-white">👤 {activeAlloc.WardenName || 'N/A'}</p>
+                <p className="text-sm font-bold text-gray-600 dark:text-blue-300">
+                  📞{" "}
+                  {activeAlloc.WardenContact ? (
+                    <a href={`tel:${activeAlloc.WardenContact}`} className="hover:text-blue-600 transition-colors">
+                      {activeAlloc.WardenContact}
+                    </a>
+                  ) : (
+                    "N/A"
+                  )}
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <p className="text-sm text-gray-500 dark:text-slate-400">Check-in: {new Date(activeAlloc.CheckInDate).toLocaleDateString()}</p>
+                <button onClick={() => setModal('wardenDir')} className="w-full mt-2 text-xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 flex items-center gap-1.5 transition-colors">
+                  <UserCheck size={14}/> View All Wardens Directory
+                </button>
+              </div>
             </div>
           ) : <p className="text-gray-400 text-sm italic py-4">No active room allocation.</p>}
         </div>
@@ -270,8 +294,13 @@ export default function MemberDashboard({ memberId, onLogout }) {
             <td className="px-5 py-4 font-bold text-gray-800 dark:text-white">{c.CategoryName}</td>
             <td className="px-5 py-4 text-gray-600 max-w-xs"><span className="truncate block" title={c.Description}>{c.Description}</span></td>
             <td className="px-5 py-4">{sevBadge(c.Severity)}</td>
-            <td className="px-5 py-4">{stsBadge(c.Status)}</td>
-            <td className="px-5 py-4 text-gray-500 text-xs font-medium">{c.RaisedDate?new Date(c.RaisedDate).toLocaleDateString():'—'}</td>
+            <td className="px-5 py-4">
+              <div>
+                {stsBadge(c.Status)}
+                {c.ResolvedDate && <p className="text-[10px] font-bold text-emerald-600 mt-1">Resolved: {new Date(c.ResolvedDate).toLocaleDateString()}</p>}
+              </div>
+            </td>
+            <td className="px-5 py-4 text-gray-500 text-xs font-medium">Raised: {c.RaisedDate?new Date(c.RaisedDate).toLocaleDateString():'—'}</td>
           </tr>
         ))}</tbody>
       </TblWrap>
@@ -343,8 +372,13 @@ export default function MemberDashboard({ memberId, onLogout }) {
             <td className="px-5 py-4 font-medium text-gray-500">#{mx.RequestID}</td>
             <td className="px-5 py-4 font-bold text-blue-600">Room {mx.RoomNumber || 'N/A'}</td>
             <td className="px-5 py-4 text-gray-600 max-w-xs">{mx.Description}</td>
-            <td className="px-5 py-4">{stsBadge(mx.Status)}</td>
-            <td className="px-5 py-4 text-gray-500 text-xs font-medium">{mx.RequestDate?new Date(mx.RequestDate).toLocaleDateString():'—'}</td>
+            <td className="px-5 py-4">
+              <div>
+                {stsBadge(mx.Status)}
+                {mx.CompletedDate && <p className="text-[10px] font-bold text-emerald-600 mt-1">Finished: {new Date(mx.CompletedDate).toLocaleDateString()}</p>}
+              </div>
+            </td>
+            <td className="px-5 py-4 text-gray-500 text-xs font-medium">Requested: {mx.RequestDate?new Date(mx.RequestDate).toLocaleDateString():'—'}</td>
           </tr>
         ))}</tbody>
       </TblWrap>
@@ -376,8 +410,16 @@ export default function MemberDashboard({ memberId, onLogout }) {
 
   return (
     <div className="flex h-screen bg-gray-50/50 dark:bg-[#0d1117] font-sans">
-      <aside className="w-72 bg-white dark:bg-[#0b0f19] border-r border-gray-200 dark:border-slate-800 flex flex-col flex-shrink-0 shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10">
-        <div className="px-6 py-8">
+      {/* Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-30 lg:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      <aside className={`fixed lg:relative z-40 w-72 h-full bg-white dark:bg-[#0b0f19] border-r border-gray-200 dark:border-slate-800 flex flex-col flex-shrink-0 shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-transform duration-300 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+        <div className="px-6 py-8 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl p-2.5 shadow-lg shadow-blue-500/30">
               <Building2 size={24} className="text-white"/>
@@ -387,11 +429,14 @@ export default function MemberDashboard({ memberId, onLogout }) {
               <p className="text-indigo-600 text-xs font-bold tracking-widest uppercase">Member Portal</p>
             </div>
           </div>
+          <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-2 text-gray-400 hover:text-gray-600">
+            <X size={24} />
+          </button>
         </div>
         
         <nav className="flex-1 px-4 py-2 space-y-1 overflow-y-auto">
           {navItems.map(item=>(
-            <button key={item.id} onClick={()=>setSection(item.id)} className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-sm font-semibold transition-all duration-200 ${section===item.id ? 'bg-blue-600 dark:bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white'}`}>
+            <button key={item.id} onClick={()=>{setSection(item.id); setIsSidebarOpen(false);}} className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-sm font-semibold transition-all duration-200 ${section===item.id ? 'bg-blue-600 dark:bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white'}`}>
               <item.icon size={20} className={section===item.id?'text-white dark:text-white':'text-gray-400 dark:text-slate-500'}/>
               {item.label}
             </button>
@@ -399,11 +444,7 @@ export default function MemberDashboard({ memberId, onLogout }) {
         </nav>
         
         <div className="p-4 border-t border-gray-100 dark:border-slate-800 flex flex-col gap-2">
-          {/* <div className="bg-gray-50 dark:bg-slate-800 rounded-2xl p-4 border border-gray-100 dark:border-slate-700 mb-2">
-             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Logged in as</p>
-             <p className="font-bold text-gray-800 dark:text-white truncate">{member?.Name || 'Student'}</p>
-          </div> */}
-          <button onClick={()=>setModal('password')} className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors shadow-sm">
+          <button onClick={()=>{setModal('password'); setIsSidebarOpen(false);}} className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors shadow-sm">
             <Lock size={18}/> Change Password
           </button>
           <button onClick={onLogout} className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors shadow-sm">
@@ -412,14 +453,22 @@ export default function MemberDashboard({ memberId, onLogout }) {
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col overflow-hidden relative">
-        <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-gray-200 dark:border-slate-700/60 px-8 py-5 flex items-center justify-between z-10 sticky top-0 shadow-sm">
-          <div><h2 className="text-2xl font-black text-gray-800 dark:text-white">{curNav?.label}</h2></div>
-          <div className="flex items-center gap-4">
-             <div className="">
-             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Logged in as:</p>
-             <p className="font-bold text-gray-800 dark:text-white truncate">{member?.Name || 'Student'}</p>
+      <div className="flex-1 flex flex-col overflow-hidden relative w-full">
+        <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-gray-200 dark:border-slate-700/60 px-4 md:px-8 py-5 flex items-center justify-between z-10 sticky top-0 shadow-sm">
+          <div className="flex items-center gap-3">
+             <button 
+               onClick={() => setIsSidebarOpen(true)}
+               className="lg:hidden p-2 text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
+             >
+               <Menu size={24} />
+             </button>
+             <h2 className="text-xl md:text-2xl font-black text-gray-800 dark:text-white">{curNav?.label}</h2>
           </div>
+          <div className="flex items-center gap-4">
+             <div className="hidden sm:block text-right">
+               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Logged in as:</p>
+               <p className="font-bold text-gray-800 dark:text-white truncate max-w-[150px]">{member?.Name || 'Student'}</p>
+             </div>
              <button
                onClick={toggleTheme}
                title={dark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
@@ -471,6 +520,35 @@ export default function MemberDashboard({ memberId, onLogout }) {
         <button onClick={handleNewMaintenance} disabled={!maintForm.Description} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-3.5 rounded-xl transition-all shadow-md disabled:opacity-50 mt-4">Submit Request</button>
       </Modal>
 
+      <Modal show={modal==='wardenDir'} onClose={() => setModal(null)} title="Hostel Warden Directory">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">You can contact any hostel warden for emergency assistance if your assigned warden is unavailable.</p>
+          <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
+            {wardens.map((w, idx) => {
+              const isActiveWarden = activeAlloc && w.HostelName === activeAlloc.HostelName;
+              return (
+                <div key={idx} className={`p-4 rounded-2xl border transition-all ${isActiveWarden ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 ring-1 ring-blue-500/20' : 'bg-slate-50 border-slate-100 dark:bg-slate-800 dark:border-slate-700'}`}>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="font-black text-slate-800 dark:text-white">{w.WardenName}</h4>
+                      <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mt-1">{w.HostelName}</p>
+                    </div>
+                    <a href={`tel:${w.WardenContact}`} className="p-2.5 bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 rounded-xl shadow-sm hover:scale-105 transition-transform border border-slate-100 dark:border-slate-600">
+                      <UserCheck size={18}/>
+                    </a>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-300">
+                    <span className="opacity-50">Phone:</span> {w.WardenContact}
+                  </div>
+                  {isActiveWarden && <Badge color="blue" className="mt-3">Assigned to you</Badge>}
+                </div>
+              );
+            })}
+          </div>
+          <button onClick={() => setModal(null)} className="w-full bg-slate-900 text-white font-bold py-4 rounded-2xl mt-4 transition-all hover:bg-slate-800">Close Directory</button>
+        </div>
+      </Modal>
+
       <Modal show={modal==='password'} onClose={()=>setModal(null)} title="Change Password">
         <Inp label="Current Password" type="password" value={cpForm.oldPassword} onChange={e=>setCpForm(p=>({...p,oldPassword:e.target.value}))}/>
         <Inp label="New Password" type="password" value={cpForm.newPassword} onChange={e=>setCpForm(p=>({...p,newPassword:e.target.value}))}/>
@@ -480,4 +558,3 @@ export default function MemberDashboard({ memberId, onLogout }) {
     </div>
   );
 }
-

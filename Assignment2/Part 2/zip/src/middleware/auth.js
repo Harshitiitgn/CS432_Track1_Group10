@@ -27,7 +27,7 @@ export function requireOwnershipOrAdmin(req, res, next) {
   if (!req.user) return res.sendStatus(401);
   if (req.user.role === 'Admin') return next();
   
-  if (req.params.id && req.user.memberId === parseInt(req.params.id, 10)) {
+  if (req.params.id && req.user.identificationNumber === req.params.id) {
     return next();
   }
   
