@@ -340,10 +340,15 @@ END;
 -- INDEXES
 -- =============================================================================
 CREATE INDEX IF NOT EXISTS idx_members_list          ON Member(IdentificationNumber, Email);
+
 CREATE INDEX IF NOT EXISTS idx_allocations_full      ON Allocation(CheckInDate DESC, IdentificationNumber, RoomID);
+
 CREATE INDEX IF NOT EXISTS idx_rooms_status          ON Room(HostelID);
+
 CREATE INDEX IF NOT EXISTS idx_complaints_full       ON Complaint(IdentificationNumber);
+
 CREATE INDEX IF NOT EXISTS idx_visitors_full         ON Visitor(IdentificationNumber);
+
 CREATE INDEX IF NOT EXISTS idx_maintenance_full      ON MaintenanceRequest(RequestedBy);
 
 

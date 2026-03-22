@@ -1,3 +1,4 @@
+import { useParams, useNavigate } from 'react-router-dom';
 import QRCode from 'react-qr-code';
 import { useState, useEffect, useCallback } from 'react';
 import {
@@ -50,10 +51,12 @@ function Badge({ color, children }) {
 const sevBadge = s => s==='Critical'?<Badge color="red">{s}</Badge>:s==='High'?<Badge color="orange">{s}</Badge>:s==='Medium'?<Badge color="yellow">{s}</Badge>:<Badge color="gray">{s}</Badge>;
 const stsBadge = s => (s==='Active'||s==='Open'||s==='Paid')?<Badge color="green">{s}</Badge>:(s==='In Progress'||s==='Pending')?<Badge color="blue">{s}</Badge>:(s==='Resolved'||s==='Completed')?<Badge color="purple">{s}</Badge>:(s==='Rejected'||s==='Closed'||s==='Overdue')?<Badge color="red">{s}</Badge>:<Badge color="gray">{s}</Badge>;
 
-export default function MemberDashboard({ identificationNumber, onLogout }) {
+export default function MemberDashboard({ storedIdentificationNumber, onLogout }) {
+  const { id: identificationNumber } = useParams();
   const { dark, toggle: toggleTheme } = useTheme();
   const [section, setSection] = useState('overview');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
@@ -98,6 +101,7 @@ export default function MemberDashboard({ identificationNumber, onLogout }) {
       setMaintForm(p => ({...p, RoomID: activeRoom}));
     } catch(e) {
       console.error(e);
+      setError(e.toString());
     } finally {
       setLoading(false);
     }
@@ -153,6 +157,17 @@ export default function MemberDashboard({ identificationNumber, onLogout }) {
   ];
 
   if (!member && loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-[#0d1117]"><div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>;
+  if (error) return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-[#0d1117] p-8 text-center">
+      <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 p-8 rounded-3xl max-w-lg shadow-xl">
+        <AlertCircle size={64} className="mx-auto mb-4 opacity-80" />
+        <h2 className="text-3xl font-black mb-2 tracking-tight">Access Denied</h2>
+        <p className="font-semibold">{error}</p>
+        <p className="mt-4 text-sm opacity-80">RBAC Middleware blocked this request because you do not own this data.</p>
+        <button onClick={onLogout} className="mt-6 bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 px-6 rounded-xl transition-colors">Sign Out</button>
+      </div>
+    </div>
+  );
 
   const activeAlloc = allocations.find(a => a.AllocationStatus === 'Active');
 

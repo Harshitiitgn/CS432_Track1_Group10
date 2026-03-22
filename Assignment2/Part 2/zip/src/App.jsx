@@ -36,13 +36,13 @@ export default function App() {
         <Routes>
           <Route path="/login" element={
             !loggedIn ? <Login onLogin={handleLogin} /> :
-            <Navigate to={role === 'Admin' ? '/admin' : '/member'} />
+            <Navigate to={role === 'Admin' ? '/admin' : `/member/${identificationNumber}`} />
           } />
           <Route path="/admin" element={
             loggedIn && role === 'Admin' ? <AdminDashboard onLogout={handleLogout} /> : <Navigate to="/login" />
           } />
-          <Route path="/member" element={
-            loggedIn && role === 'Regular' ? <MemberDashboard identificationNumber={identificationNumber} onLogout={handleLogout} /> : <Navigate to="/login" />
+          <Route path="/member/:id" element={
+            loggedIn && role === 'Regular' ? <MemberDashboard storedIdentificationNumber={identificationNumber} onLogout={handleLogout} /> : <Navigate to="/login" />
           } />
           <Route path="*" element={<Navigate to="/login" />} />
         </Routes>
